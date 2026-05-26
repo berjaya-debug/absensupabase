@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Backend Admin - Absensi & NBM</title>
+    <!-- PERBAIKAN: Pastikan load Supabase dari CDN yang stabil -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .box { border: 1px solid #ccc; padding: 15px; border-radius: 5px; }
+        .full-width { grid-column: span 2; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        button { padding: 8px 16px; cursor: pointer; }
+        input[type="text"], input[type="number"], select { padding: 8px; width: 100%; box-sizing: border-box; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h3>Kelola Outlet</h3>
+        <!-- PERBAIKAN: Hapus onsubmit dari tag form, gunakan addEventListener di JS -->
+        <div id="form-outlet">
+            <input type="hidden" id="outlet-id">
+            <input type="text" id="outlet-name" placeholder="Nama Outlet"><br><br>
+            <input type="number" step="any" id="outlet-lat" placeholder="Latitude"><br><br>
+            <input type="number" step="any" id="outlet-lon" placeholder="Longitude"><br><br>
+            <button onclick="saveOutlet()">Simpan Outlet</button>
+        </div>
+        <table id="table-outlet">
+            <thead><tr><th>Nama</th><th>Koordinat</th><th>Aksi</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="box">
+        <h3>Kelola Staff & Rate NBM</h3>
+        <!-- PERBAIKAN: Hapus onsubmit dari tag form -->
+        <div id="form-staff">
+            <input type="hidden" id="staff-id">
+            <input type="text" id="staff-name" placeholder="Nama Staff"><br><br>
+            <select id="staff-outlet"><option value="">-- Pilih Outlet Kerja --</option></select><br><br>
+            <input type="number" id="staff-nbm" placeholder="Nominal NBM Rupiah (Hadir)"><br><br>
+            <button onclick="saveStaff()">Simpan Staff</button>
+        </div>
+        <table id="table-staff">
+            <thead><tr><th>Nama Staff</th><th>Outlet</th><th>NBM Rate</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="box">
+        <h3>Generate OTP Tugas Keluar</h3>
+        <select id="otp-staff-select"><option value="">-- Pilih Staff --</option></select><br><br>
+        <button onclick="generateOTP()">Buat Kode OTP</button>
+        <h2 id="display-otp" style="color: blue; letter-spacing: 2px;">------</h2>
+    </div>
+
+    <div class="box full-width">
+        <h3>Laporan Rekap NBM & Kehadiran</h3>
+        <div>
+            Filter Tanggal: <input type="date" id="filter-start"> s/d <input type="date" id="filter-end">
+            <select id="filter-staff"><option value="">Semua Staff</option></select>
+            <select id="filter-outlet"><option value="">Semua Outlet</option></select>
+            <button onclick="loadRekapReport()">Cari Data</button>
+        </div>
+        <table id="table-rekap">
+            <thead>
+                <tr>
+                    <th>Nama Staff</th>
+                    <th>Total Kehadiran</th>
+                    <th>Total Terima NBM (Rupiah)</th>
+                    <th>Tanggal Hadir Terperinci</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script>
+    const SUPABASE_URL = "https://gbwbvwfbqqdvjvxgqowp.supabase.co";
+    // PERBAIKAN: Ganti dengan anon/public key dari Supabase dashboard
+    // Pergi ke: Supabase Dashboard > Project Settings > API > Project API Keys > anon public
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdid2J2d2ZicXFkdmp2eGdxb3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTE3NDQsImV4cCI6MjA4OTQ4Nzc0NH0.L_pjKKXGvKuTAgT9AzmWDLSal8txQwkSUx0T7j6j6dc";
+
+    // PERBAIKAN: Pakai window.supabase agar tidak bentrok dengan nama variabel lokal
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    window.onload = () => {
+        initAdminData();
+    };
+
+    async function initAdminData() {
+        await loadOutlets();
+        await loadStaffData();
+    }
+
+    // ===================== OUTLET =====================
+    async function loadOutlets() {
+        const { data, error } = await _supabase.from('outlets').select('*');
+        if (error) {
+            console.error("Gagal memuat outlet:", error.message);
+            alert("Error load outlet: " + error.message);
+            return;
+        }
+
+        const tbody = document.querySelector('#table-outlet tbody');
+        const selectStaff = document.getElementById('staff-outlet');
+        const filterOutlet = document.getElementById('filter-outlet');
+
+        tbody.innerHTML = data.map(o => `
+            <tr>
+                <td>${o.name}</td>
+                <td>${o.latitude}, ${o.longitude}</td>
+                <td><button onclick="deleteOutlet('${o.id}')">Hapus</button></td>
+            </tr>
+        `).join('');
+
+        const options = data.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+        selectStaff.innerHTML = '<option value="">-- Pilih Outlet Kerja --</option>' + options;
+        filterOutlet.innerHTML = '<option value="">Semua Outlet</option>' + options;
+    }
+
+    async function saveOutlet() {
+        const name = document.getElementById('outlet-name').value.trim();
+        const lat  = document.getElementById('outlet-lat').value.trim();
+        const lon  = document.getElementById('outlet-lon').value.trim();
+
+        // PERBAIKAN: Validasi manual karena tidak pakai <form required>
+        if (!name || !lat || !lon) {
+            alert("Semua field outlet harus diisi!");
+            return;
+        }
+
+        console.log("Menyimpan outlet:", { name, latitude: parseFloat(lat), longitude: parseFloat(lon) });
+
+        const { data, error } = await _supabase.from('outlets').insert({
+            name: name,
+            latitude: parseFloat(lat),   // PERBAIKAN: pastikan number, bukan string
+            longitude: parseFloat(lon)   // PERBAIKAN: pastikan number, bukan string
+        }).select();
+
+        if (error) {
+            alert("Gagal menyimpan Outlet: " + error.message);
+            console.error("Detail Error Outlet:", error);
+        } else {
+            console.log("Outlet tersimpan:", data);
+            alert("Outlet berhasil disimpan!");
+            document.getElementById('outlet-name').value = '';
+            document.getElementById('outlet-lat').value = '';
+            document.getElementById('outlet-lon').value = '';
+            await loadOutlets();
+        }
+    }
+
+    async function deleteOutlet(id) {
+        if (!confirm("Hapus outlet ini?")) return;
+        const { error } = await _supabase.from('outlets').delete().eq('id', id);
+        if (error) {
+            alert("Gagal hapus outlet: " + error.message);
+        } else {
+            await loadOutlets();
+        }
+    }
+
+    // ===================== STAFF =====================
+    async function loadStaffData() {
+        // PERBAIKAN: Query dengan join outlet
+        const { data, error } = await _supabase.from('staff').select('*, outlets(name)');
+        if (error) {
+            console.error("Gagal memuat staff:", error.message);
+            alert("Error load staff: " + error.message);
+            return;
+        }
+
+        const tbody = document.querySelector('#table-staff tbody');
+        const otpStaff = document.getElementById('otp-staff-select');
+        const filterStaff = document.getElementById('filter-staff');
+
+        tbody.innerHTML = data.map(s => `
+            <tr>
+                <td>${s.name}</td>
+                <td>${s.outlets?.name || '-'}</td>
+                <td>Rp ${Number(s.nbm_rate).toLocaleString('id-ID')}</td>
+            </tr>
+        `).join('');
+
+        const options = data.map(s => `<option value="${s.id}" data-outlet="${s.outlet_id}">${s.name}</option>`).join('');
+        otpStaff.innerHTML  = '<option value="">-- Pilih Staff --</option>' + options;
+        filterStaff.innerHTML = '<option value="">Semua Staff</option>' + options;
+    }
+
+    async function saveStaff() {
+        const name     = document.getElementById('staff-name').value.trim();
+        const outletId = document.getElementById('staff-outlet').value;
+        const nbmRate  = document.getElementById('staff-nbm').value.trim();
+
+        // PERBAIKAN: Validasi manual
+        if (!name || !outletId || !nbmRate) {
+            alert("Semua field staff harus diisi!");
+            return;
+        }
+
+        console.log("Menyimpan staff:", { name, outlet_id: outletId, nbm_rate: parseInt(nbmRate) });
+
+        const { data, error } = await _supabase.from('staff').insert({
+            name: name,
+            outlet_id: outletId,
+            nbm_rate: parseInt(nbmRate)   // PERBAIKAN: pastikan integer
+        }).select();
+
+        if (error) {
+            alert("Gagal menyimpan Staff: " + error.message);
+            console.error("Detail Error Staff:", error);
+        } else {
+            console.log("Staff tersimpan:", data);
+            alert("Staff berhasil disimpan!");
+            document.getElementById('staff-name').value = '';
+            document.getElementById('staff-outlet').value = '';
+            document.getElementById('staff-nbm').value = '';
+            await loadStaffData();
+        }
+    }
+
+    // ===================== OTP =====================
+    async function generateOTP() {
+        const select   = document.getElementById('otp-staff-select');
+        const staffId  = select.value;
+        const outletId = select.options[select.selectedIndex].getAttribute('data-outlet');
+
+        if (!staffId) {
+            alert("Pilih staff terlebih dahulu!");
+            return;
+        }
+
+        const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const today = new Date().toISOString().split('T')[0];
+
+        console.log("Generate OTP:", { staffId, outletId, generatedCode, today });
+
+        const { error } = await _supabase.from('otp_logs').insert({
+            staff_id:   staffId,
+            outlet_id:  outletId,
+            otp_code:   generatedCode,
+            valid_date: today,
+            is_used:    false   // PERBAIKAN: eksplisit set is_used = false
+        });
+
+        if (error) {
+            alert("Gagal generate OTP: " + error.message);
+            console.error("Detail Error OTP:", error);
+        } else {
+            document.getElementById('display-otp').innerText = generatedCode;
+        }
+    }
+
+    // ===================== REKAP =====================
+    async function loadRekapReport() {
+        const start    = document.getElementById('filter-start').value;
+        const end      = document.getElementById('filter-end').value;
+        const staffId  = document.getElementById('filter-staff').value;
+        const outletId = document.getElementById('filter-outlet').value;
+
+        // PERBAIKAN: Query dengan join yang benar
+        let query = _supabase
+            .from('attendance')
+            .select('created_at, status, staff_id, staff(id, name, nbm_rate, outlet_id, outlets(name))')
+            .eq('status', 'hadir');
+
+        if (start) query = query.gte('created_at', start + "T00:00:00");
+        if (end)   query = query.lte('created_at', end   + "T23:59:59");
+        // PERBAIKAN: Filter staff & outlet langsung di query jika ada
+        if (staffId)  query = query.eq('staff_id', staffId);
+
+        const { data, error } = await query;
+
+        if (error) {
+            alert("Gagal memuat rekap: " + error.message);
+            console.error("Detail Error Rekap:", error);
+            return;
+        }
+
+        console.log("Data rekap:", data);
+
+        let summary = {};
+        data.forEach(item => {
+            const sInfo = item.staff;
+            if (!sInfo) return;
+            // Filter outlet di sisi client jika dipilih
+            if (outletId && String(sInfo.outlet_id) !== String(outletId)) return;
+
+            if (!summary[sInfo.id]) {
+                summary[sInfo.id] = {
+                    name:  sInfo.name,
+                    rate:  Number(sInfo.nbm_rate),
+                    count: 0,
+                    dates: []
+                };
+            }
+            summary[sInfo.id].count += 1;
+            summary[sInfo.id].dates.push(
+                new Date(item.created_at).toLocaleDateString('id-ID')
+            );
+        });
+
+        const rows = Object.values(summary);
+        const tbody = document.querySelector('#table-rekap tbody');
+
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Tidak ada data</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = rows.map(row => `
+            <tr>
+                <td>${row.name}</td>
+                <td>${row.count} Kali Kehadiran</td>
+                <td><b>Rp ${(row.rate * row.count).toLocaleString('id-ID')}</b></td>
+                <td><small>${row.dates.join(', ')}</small></td>
+            </tr>
+        `).join('');
+    }
+    </script>
+</body>
+</html>

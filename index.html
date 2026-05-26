@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Digital Otonix & AB Cafe</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        select, input, button { width: 100%; padding: 10px; box-sizing: border-box; }
+        #camera-container { width: 100%; height: 250px; background: #eee; margin-bottom: 10px; position: relative; }
+        video, canvas { width: 100%; height: 100%; object-fit: cover; }
+        .hidden { display: none; }
+        .btn-hadir  { background: #28a745; color: white; border: none; margin-bottom: 5px; cursor: pointer; }
+        .btn-pulang { background: #dc3545; color: white; border: none; cursor: pointer; }
+        #status-gps { font-size: 13px; color: #555; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>Presensi Karyawan</h2>
+
+    <div class="form-group">
+        <label>Pilih Nama Staff</label>
+        <select id="staff-select" onchange="loadStaffOutlet()">
+            <option value="">-- Pilih Nama --</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Foto Selfie</label>
+        <div id="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas" class="hidden"></canvas>
+        </div>
+        <button type="button" onclick="takeSnapshot()">Ambil Foto</button>
+    </div>
+
+    <div class="form-group">
+        <label>
+            <input type="checkbox" id="tugas-keluar" onchange="toggleTugasKeluar()"> Sedang Tugas Keluar?
+        </label>
+    </div>
+
+    <div class="form-group hidden" id="otp-container">
+        <label>Masukkan OTP dari Admin</label>
+        <input type="text" id="otp-input" placeholder="6 Digit OTP">
+    </div>
+
+    <button class="btn-hadir"  onclick="submitAbsen('hadir')">Absen Hadir</button>
+    <button class="btn-pulang" onclick="submitAbsen('pulang')">Absen Pulang</button>
+    <div id="status-gps"></div>
+
+    <script>
+        const SUPABASE_URL = "https://gbwbvwfbqqdvjvxgqowp.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdid2J2d2ZicXFkdmp2eGdxb3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTE3NDQsImV4cCI6MjA4OTQ4Nzc0NH0.L_pjKKXGvKuTAgT9AzmWDLSal8txQwkSUx0T7j6j6dc";
+        const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const RADIUS_OUTLET = 110; // meter — radius tetap yang diizinkan
+
+        let selectedStaffObj = null;
+        let capturedBlob     = null;
+
+        window.onload = async () => {
+            await loadStaff();
+            initCamera();
+        };
+
+        // ===================== LOAD STAFF =====================
+        async function loadStaff() {
+            const { data, error } = await _supabase
+                .from('staff')
+                .select('id, name, outlet_id, outlets(latitude, longitude)');
+
+            if (error) {
+                console.error("Gagal memuat staff:", error.message);
+                alert("Gagal memuat data staff: " + error.message);
+                return;
+            }
+
+            const select = document.getElementById('staff-select');
+            select.innerHTML = '<option value="">-- Pilih Nama --</option>' +
+                data.map(s => `
+                    <option value="${s.id}"
+                        data-lat="${s.outlets?.latitude  ?? ''}"
+                        data-lon="${s.outlets?.longitude ?? ''}">
+                        ${s.name}
+                    </option>
+                `).join('');
+        }
+
+        function loadStaffOutlet() {
+            const select      = document.getElementById('staff-select');
+            const selectedOpt = select.options[select.selectedIndex];
+
+            if (!select.value) {
+                selectedStaffObj = null;
+                return;
+            }
+
+            selectedStaffObj = {
+                id:  select.value,
+                lat: parseFloat(selectedOpt.getAttribute('data-lat')),
+                lon: parseFloat(selectedOpt.getAttribute('data-lon'))
+            };
+            console.log("Staff dipilih:", selectedStaffObj);
+        }
+
+        // ===================== KAMERA =====================
+        function initCamera() {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+                .then(stream => {
+                    document.getElementById('video').srcObject = stream;
+                })
+                .catch(err => {
+                    alert("Gagal akses kamera depan: " + err.message);
+                });
+        }
+
+        function takeSnapshot() {
+            const video   = document.getElementById('video');
+            const canvas  = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+
+            canvas.width  = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.classList.remove('hidden');
+            video.classList.add('hidden');
+
+            canvas.toBlob(blob => {
+                capturedBlob = blob;
+                console.log("Foto diambil, size:", blob?.size);
+            }, 'image/jpeg');
+        }
+
+        function toggleTugasKeluar() {
+            const isChecked = document.getElementById('tugas-keluar').checked;
+            document.getElementById('otp-container').classList.toggle('hidden', !isChecked);
+        }
+
+        // ===================== GPS =====================
+
+        // Haversine Formula — hitung jarak dalam meter
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R        = 6371e3;
+            const phi1     = lat1 * Math.PI / 180;
+            const phi2     = lat2 * Math.PI / 180;
+            const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+            const deltaLam = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(deltaPhi / 2) ** 2 +
+                      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLam / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        // Ambil lokasi terbaik — sampling 3x, pilih akurasi terbaik
+        function getCurrentLocation() {
+            return new Promise((resolve, reject) => {
+                let bestPosition = null;
+                let attempts     = 0;
+                const MAX_ATTEMPTS = 3;
+                const statusEl = document.getElementById('status-gps');
+
+                statusEl.innerText = "📡 Mendeteksi lokasi GPS...";
+
+                const watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        attempts++;
+                        statusEl.innerText = `📡 Mengambil sampel GPS (${attempts}/${MAX_ATTEMPTS})... akurasi: ±${Math.round(position.coords.accuracy)}m`;
+
+                        // Simpan posisi dengan akurasi terbaik (angka terkecil = lebih akurat)
+                        if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+                            bestPosition = position;
+                        }
+
+                        // Selesai jika sudah 3 sampel atau akurasi sudah bagus (< 20m)
+                        if (attempts >= MAX_ATTEMPTS || position.coords.accuracy < 20) {
+                            navigator.geolocation.clearWatch(watchId);
+                            statusEl.innerText = `✅ Lokasi terkunci. Akurasi GPS: ±${Math.round(bestPosition.coords.accuracy)}m`;
+                            resolve(bestPosition);
+                        }
+                    },
+                    (err) => {
+                        navigator.geolocation.clearWatch(watchId);
+                        statusEl.innerText = "❌ Gagal mendapatkan lokasi.";
+                        if (bestPosition) resolve(bestPosition); // fallback ke posisi terakhir
+                        else reject(err);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 0   // selalu ambil lokasi fresh, jangan pakai cache
+                    }
+                );
+            });
+        }
+
+        // ===================== SUBMIT ABSEN =====================
+        async function submitAbsen(status) {
+            if (!selectedStaffObj || !selectedStaffObj.id) {
+                alert("Pilih nama staff terlebih dahulu!");
+                return;
+            }
+            if (!capturedBlob) {
+                alert("Ambil foto selfie terlebih dahulu!");
+                return;
+            }
+
+            try {
+                const position      = await getCurrentLocation();
+                const userLat       = position.coords.latitude;
+                const userLon       = position.coords.longitude;
+                const gpsAccuracy   = position.coords.accuracy; // akurasi GPS dalam meter
+                const isTugasKeluar = document.getElementById('tugas-keluar').checked;
+
+                console.log(`Lokasi: ${userLat}, ${userLon} | Akurasi GPS: ±${Math.round(gpsAccuracy)}m`);
+
+                if (isTugasKeluar) {
+                    // Validasi OTP
+                    const otpInput = document.getElementById('otp-input').value.trim();
+                    if (!otpInput) {
+                        alert("Masukkan kode OTP terlebih dahulu!");
+                        return;
+                    }
+
+                    const today = new Date().toISOString().split('T')[0];
+                    const { data: otpValid, error: otpErr } = await _supabase
+                        .from('otp_logs')
+                        .select('*')
+                        .eq('staff_id', selectedStaffObj.id)
+                        .eq('otp_code', otpInput)
+                        .eq('valid_date', today)
+                        .eq('is_used', false)
+                        .maybeSingle();
+
+                    if (otpErr) {
+                        alert("Error validasi OTP: " + otpErr.message);
+                        return;
+                    }
+                    if (!otpValid) {
+                        alert("OTP tidak valid atau sudah digunakan/kedaluwarsa!");
+                        return;
+                    }
+
+                    await _supabase.from('otp_logs').update({ is_used: true }).eq('id', otpValid.id);
+
+                } else {
+                    // Validasi koordinat outlet
+                    if (isNaN(selectedStaffObj.lat) || isNaN(selectedStaffObj.lon)) {
+                        alert("Koordinat outlet tidak valid. Hubungi admin.");
+                        return;
+                    }
+
+                    const distance = getDistance(userLat, userLon, selectedStaffObj.lat, selectedStaffObj.lon);
+
+                    // Toleransi dinamis: radius outlet + akurasi GPS device
+                    const effectiveRadius = RADIUS_OUTLET + gpsAccuracy;
+
+                    console.log(`Jarak ke outlet: ${Math.round(distance)}m | Radius: ${RADIUS_OUTLET}m + GPS ±${Math.round(gpsAccuracy)}m = toleransi ${Math.round(effectiveRadius)}m`);
+                    document.getElementById('status-gps').innerText =
+                        `📍 Jarak ke outlet: ${Math.round(distance)}m | Toleransi: ${Math.round(effectiveRadius)}m (radius ${RADIUS_OUTLET}m + GPS ±${Math.round(gpsAccuracy)}m)`;
+
+                    if (distance > effectiveRadius) {
+                        alert(
+                            `Absen ditolak ❌\n\n` +
+                            `Jarak Anda ke outlet : ${Math.round(distance)} meter\n` +
+                            `Radius yang diizinkan: ${RADIUS_OUTLET} meter\n` +
+                            `Akurasi GPS Anda     : ±${Math.round(gpsAccuracy)} meter\n` +
+                            `Toleransi efektif    : ${Math.round(effectiveRadius)} meter\n\n` +
+                            `Coba pindah ke area yang lebih terbuka lalu ulangi.`
+                        );
+                        return;
+                    }
+                }
+
+                // Upload Foto ke Supabase Storage
+                const fileName = `${selectedStaffObj.id}_${Date.now()}.jpg`;
+                const { error: uploadErr } = await _supabase.storage
+                    .from('selfies')
+                    .upload(fileName, capturedBlob, { contentType: 'image/jpeg' });
+
+                if (uploadErr) {
+                    alert("Gagal upload foto: " + uploadErr.message);
+                    return;
+                }
+
+                const { data: urlData } = _supabase.storage.from('selfies').getPublicUrl(fileName);
+
+                // Insert Log Absensi
+                const { error: insertErr } = await _supabase.from('attendance').insert({
+                    staff_id:        selectedStaffObj.id,
+                    status:          status,
+                    latitude:        userLat,
+                    longitude:       userLon,
+                    photo_url:       urlData.publicUrl,
+                    is_tugas_keluar: isTugasKeluar
+                });
+
+                if (insertErr) {
+                    alert("Gagal simpan absensi: " + insertErr.message);
+                    console.error("Error insert attendance:", insertErr);
+                    return;
+                }
+
+                alert(`Absen ${status} Berhasil! ✅`);
+                location.reload();
+
+            } catch (err) {
+                console.error("Error submitAbsen:", err);
+                alert("Terjadi kesalahan: " + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
