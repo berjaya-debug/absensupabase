@@ -2,325 +2,787 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Backend Admin - Absensi & NBM</title>
-    <!-- PERBAIKAN: Pastikan load Supabase dari CDN yang stabil -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel — Otonix & AB Cafe</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .box { border: 1px solid #ccc; padding: 15px; border-radius: 5px; }
-        .full-width { grid-column: span 2; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        button { padding: 8px 16px; cursor: pointer; }
-        input[type="text"], input[type="number"], select { padding: 8px; width: 100%; box-sizing: border-box; margin-bottom: 5px; }
+        :root {
+            --maroon:      #6B1A1A;
+            --maroon-dark: #4A0F0F;
+            --maroon-lite: #8B2A2A;
+            --cream:       #F5EFE0;
+            --cream-dark:  #EAE0CC;
+            --cream-lite:  #FBF8F2;
+            --gold:        #C9A84C;
+            --gold-lite:   #E8C97A;
+            --text-dark:   #2C1A1A;
+            --text-mid:    #5C3D3D;
+            --text-lite:   #9C7A7A;
+            --shadow:      0 4px 24px rgba(107,26,26,0.12);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--cream);
+            min-height: 100vh;
+            color: var(--text-dark);
+        }
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background:
+                radial-gradient(circle at 10% 10%, rgba(107,26,26,0.05) 0%, transparent 50%),
+                radial-gradient(circle at 90% 90%, rgba(201,168,76,0.07) 0%, transparent 50%);
+            pointer-events: none; z-index: 0;
+        }
+
+        /* ── HEADER ── */
+        .header {
+            background: linear-gradient(135deg, var(--maroon-dark) 0%, var(--maroon) 60%, var(--maroon-lite) 100%);
+            padding: 20px 28px;
+            display: flex; align-items: center; gap: 16px;
+            position: sticky; top: 0; z-index: 100;
+            box-shadow: 0 4px 20px rgba(44,10,10,0.3);
+        }
+        .header-logo {
+            width: 52px; height: 52px;
+            border-radius: 50%;
+            border: 2px solid var(--gold);
+            object-fit: cover;
+        }
+        .logo-fallback {
+            width: 52px; height: 52px;
+            border-radius: 50%;
+            border: 2px solid var(--gold);
+            background: rgba(255,255,255,0.12);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+        }
+        .header-title h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 20px; color: var(--cream-lite);
+        }
+        .header-title p {
+            font-size: 11px; color: var(--gold-lite);
+            letter-spacing: 1.5px; text-transform: uppercase;
+        }
+
+        /* ── TABS ── */
+        .tab-bar {
+            background: var(--maroon-dark);
+            display: flex;
+            overflow-x: auto;
+            scrollbar-width: none;
+            position: sticky; top: 92px; z-index: 99;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            padding: 14px 22px;
+            background: none; border: none;
+            color: rgba(245,239,224,0.55);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px; font-weight: 500;
+            cursor: pointer; white-space: nowrap;
+            border-bottom: 3px solid transparent;
+            letter-spacing: 0.3px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--cream-lite); }
+        .tab-btn.active {
+            color: var(--gold-lite);
+            border-bottom-color: var(--gold);
+        }
+
+        /* ── CONTENT ── */
+        .tab-content { display: none; padding: 24px; position: relative; z-index: 1; }
+        .tab-content.active { display: block; animation: fadeIn 0.25s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── SECTION CARD ── */
+        .section-card {
+            background: var(--cream-lite);
+            border-radius: 16px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(107,26,26,0.07);
+        }
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 17px; color: var(--maroon);
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1.5px solid var(--cream-dark);
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* ── FORM ── */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .form-grid.single { grid-template-columns: 1fr; }
+        .form-grid.triple { grid-template-columns: 1fr 1fr 1fr; }
+
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-label { font-size: 11px; font-weight: 500; color: var(--text-lite); letter-spacing: 0.8px; text-transform: uppercase; }
+
+        input[type="text"], input[type="number"], input[type="date"], select, textarea {
+            padding: 10px 13px;
+            border: 1.5px solid var(--cream-dark);
+            border-radius: 9px;
+            background: var(--cream);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px; color: var(--text-dark);
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        input:focus, select:focus { border-color: var(--maroon); box-shadow: 0 0 0 3px rgba(107,26,26,0.09); }
+
+        /* ── BUTTONS ── */
+        .btn { padding: 10px 18px; border: none; border-radius: 9px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.18s; }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: var(--maroon); color: var(--cream-lite); }
+        .btn-primary:hover { background: var(--maroon-dark); }
+        .btn-secondary { background: var(--cream-dark); color: var(--maroon); border: 1.5px solid var(--cream-dark); }
+        .btn-secondary:hover { background: var(--gold-lite); }
+        .btn-danger { background: #fff0f0; color: #B5351F; border: 1.5px solid #f5c5c5; font-size: 12px; padding: 6px 12px; }
+        .btn-danger:hover { background: #B5351F; color: #fff; }
+        .btn-edit { background: #f0f4ff; color: #2563EB; border: 1.5px solid #c5d4f5; font-size: 12px; padding: 6px 12px; }
+        .btn-edit:hover { background: #2563EB; color: #fff; }
+        .btn-search { background: var(--maroon); color: var(--cream-lite); padding: 10px 20px; }
+
+        /* ── TABLE ── */
+        .table-wrap { overflow-x: auto; margin-top: 14px; border-radius: 10px; border: 1px solid var(--cream-dark); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead tr { background: var(--maroon); }
+        thead th { color: var(--cream-lite); padding: 11px 13px; text-align: left; font-weight: 500; font-size: 12px; letter-spacing: 0.5px; white-space: nowrap; }
+        tbody tr { border-bottom: 1px solid var(--cream-dark); transition: background 0.15s; }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: rgba(107,26,26,0.04); }
+        tbody td { padding: 11px 13px; color: var(--text-mid); vertical-align: middle; }
+        .td-actions { display: flex; gap: 6px; align-items: center; }
+        .empty-row td { text-align: center; color: var(--text-lite); padding: 24px; font-size: 13px; }
+
+        /* ── OTP DISPLAY ── */
+        .otp-display {
+            font-family: 'Playfair Display', serif;
+            font-size: 40px;
+            color: var(--maroon);
+            letter-spacing: 8px;
+            text-align: center;
+            padding: 20px;
+            background: var(--cream);
+            border-radius: 12px;
+            border: 2px dashed var(--gold);
+            margin: 14px 0;
+        }
+
+        /* ── FILTER ROW ── */
+        .filter-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+        .filter-row .form-group { flex: 1; min-width: 140px; }
+
+        /* ── REKAP BADGE ── */
+        .badge-count { background: var(--maroon); color: var(--cream-lite); padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .badge-rupiah { font-weight: 700; color: var(--maroon); }
+
+        /* ── MODAL ── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(44,26,26,0.5);
+            z-index: 1000;
+            display: flex; align-items: center; justify-content: center; padding: 24px;
+            opacity: 0; pointer-events: none; transition: opacity 0.22s;
+        }
+        .modal-overlay.show { opacity: 1; pointer-events: all; }
+        .modal-box {
+            background: var(--cream-lite);
+            border-radius: 18px; padding: 28px 24px;
+            width: 100%; max-width: 400px; text-align: center;
+            transform: scale(0.93) translateY(10px); transition: transform 0.22s;
+            box-shadow: 0 20px 60px rgba(44,26,26,0.25);
+        }
+        .modal-overlay.show .modal-box { transform: scale(1) translateY(0); }
+        .modal-icon { font-size: 44px; margin-bottom: 10px; }
+        .modal-title { font-family: 'Playfair Display', serif; font-size: 19px; color: var(--text-dark); margin-bottom: 8px; }
+        .modal-msg { font-size: 14px; color: var(--text-mid); line-height: 1.6; white-space: pre-line; }
+        .modal-actions { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+        .modal-btn-ok { padding: 11px 28px; border: none; border-radius: 9px; background: var(--maroon); color: var(--cream-lite); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; }
+        .modal-btn-cancel { padding: 11px 20px; border: 1.5px solid var(--cream-dark); border-radius: 9px; background: var(--cream); color: var(--text-mid); font-family: 'DM Sans', sans-serif; font-size: 14px; cursor: pointer; }
+
+        /* ── EDIT MODAL ── */
+        .edit-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(44,26,26,0.5);
+            z-index: 1100;
+            display: flex; align-items: center; justify-content: center; padding: 24px;
+            opacity: 0; pointer-events: none; transition: opacity 0.22s;
+        }
+        .edit-modal-overlay.show { opacity: 1; pointer-events: all; }
+        .edit-modal-box {
+            background: var(--cream-lite);
+            border-radius: 18px; padding: 28px 24px;
+            width: 100%; max-width: 440px;
+            transform: scale(0.93); transition: transform 0.22s;
+            box-shadow: 0 20px 60px rgba(44,26,26,0.25);
+        }
+        .edit-modal-overlay.show .edit-modal-box { transform: scale(1); }
+        .edit-modal-title { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--maroon); margin-bottom: 18px; }
+
+        /* ── SPINNER ── */
+        .spinner-overlay {
+            position: fixed; inset: 0;
+            background: rgba(44,26,26,0.4); z-index: 2000;
+            display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+        }
+        .spinner-overlay.show { display: flex; }
+        .spinner { width: 44px; height: 44px; border: 4px solid rgba(245,239,224,0.25); border-top-color: var(--cream-lite); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .spinner-text { color: var(--cream-lite); font-size: 14px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="box">
-        <h3>Kelola Outlet</h3>
-        <!-- PERBAIKAN: Hapus onsubmit dari tag form, gunakan addEventListener di JS -->
-        <div id="form-outlet">
-            <input type="hidden" id="outlet-id">
-            <input type="text" id="outlet-name" placeholder="Nama Outlet"><br><br>
-            <input type="number" step="any" id="outlet-lat" placeholder="Latitude"><br><br>
-            <input type="number" step="any" id="outlet-lon" placeholder="Longitude"><br><br>
-            <button onclick="saveOutlet()">Simpan Outlet</button>
+<!-- SPINNER -->
+<div class="spinner-overlay" id="spinner">
+    <div class="spinner"></div>
+    <div class="spinner-text" id="spinner-text">Memproses...</div>
+</div>
+
+<!-- MODAL NOTIF -->
+<div class="modal-overlay" id="modal">
+    <div class="modal-box">
+        <div class="modal-icon" id="modal-icon">✅</div>
+        <div class="modal-title" id="modal-title"></div>
+        <div class="modal-msg" id="modal-msg"></div>
+        <div class="modal-actions">
+            <button class="modal-btn-ok" id="modal-ok-btn" onclick="closeModal()">OK</button>
+            <button class="modal-btn-cancel" id="modal-cancel-btn" onclick="closeModal()" style="display:none">Batal</button>
         </div>
-        <table id="table-outlet">
-            <thead><tr><th>Nama</th><th>Koordinat</th><th>Aksi</th></tr></thead>
-            <tbody></tbody>
-        </table>
     </div>
+</div>
 
-    <div class="box">
-        <h3>Kelola Staff & Rate NBM</h3>
-        <!-- PERBAIKAN: Hapus onsubmit dari tag form -->
-        <div id="form-staff">
-            <input type="hidden" id="staff-id">
-            <input type="text" id="staff-name" placeholder="Nama Staff"><br><br>
-            <select id="staff-outlet"><option value="">-- Pilih Outlet Kerja --</option></select><br><br>
-            <input type="number" id="staff-nbm" placeholder="Nominal NBM Rupiah (Hadir)"><br><br>
-            <button onclick="saveStaff()">Simpan Staff</button>
+<!-- EDIT MODAL -->
+<div class="edit-modal-overlay" id="edit-modal">
+    <div class="edit-modal-box">
+        <div class="edit-modal-title" id="edit-modal-title">Edit Data</div>
+        <div id="edit-modal-body"></div>
+        <div style="display:flex; gap:10px; margin-top:18px; justify-content:flex-end;">
+            <button class="modal-btn-cancel" onclick="closeEditModal()">Batal</button>
+            <button class="modal-btn-ok" onclick="saveEdit()">Simpan</button>
         </div>
-        <table id="table-staff">
-            <thead><tr><th>Nama Staff</th><th>Outlet</th><th>NBM Rate</th></tr></thead>
-            <tbody></tbody>
-        </table>
     </div>
+</div>
 
-    <div class="box">
-        <h3>Generate OTP Tugas Keluar</h3>
-        <select id="otp-staff-select"><option value="">-- Pilih Staff --</option></select><br><br>
-        <button onclick="generateOTP()">Buat Kode OTP</button>
-        <h2 id="display-otp" style="color: blue; letter-spacing: 2px;">------</h2>
+<!-- HEADER -->
+<div class="header">
+    <img src="images/logo.png" class="header-logo"
+         onerror="this.style.display='none'; document.getElementById('logo-fb').style.display='flex';" alt="Logo">
+    <div class="logo-fallback" id="logo-fb" style="display:none;">🏪</div>
+    <div class="header-title">
+        <h1>Admin Panel</h1>
+        <p>Otonix &amp; AB Cafe</p>
     </div>
+</div>
 
-    <div class="box full-width">
-        <h3>Laporan Rekap NBM & Kehadiran</h3>
-        <div>
-            Filter Tanggal: <input type="date" id="filter-start"> s/d <input type="date" id="filter-end">
-            <select id="filter-staff"><option value="">Semua Staff</option></select>
-            <select id="filter-outlet"><option value="">Semua Outlet</option></select>
-            <button onclick="loadRekapReport()">Cari Data</button>
+<!-- TAB BAR -->
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('rekap')">📊 Rekap Laporan</button>
+    <button class="tab-btn" onclick="switchTab('outlet')">🏪 Outlet</button>
+    <button class="tab-btn" onclick="switchTab('staff')">👤 Staff</button>
+    <button class="tab-btn" onclick="switchTab('otp')">🔑 OTP</button>
+</div>
+
+<!-- ═══════════════ TAB: REKAP ═══════════════ -->
+<div class="tab-content active" id="tab-rekap">
+    <div class="section-card">
+        <div class="section-title">📊 Laporan Rekap NBM & Kehadiran</div>
+        <div class="filter-row">
+            <div class="form-group">
+                <div class="form-label">Dari Tanggal</div>
+                <input type="date" id="filter-start">
+            </div>
+            <div class="form-group">
+                <div class="form-label">Sampai Tanggal</div>
+                <input type="date" id="filter-end">
+            </div>
+            <div class="form-group">
+                <div class="form-label">Staff</div>
+                <select id="filter-staff"><option value="">Semua Staff</option></select>
+            </div>
+            <div class="form-group">
+                <div class="form-label">Outlet</div>
+                <select id="filter-outlet"><option value="">Semua Outlet</option></select>
+            </div>
+            <button class="btn btn-search" onclick="loadRekapReport()">🔍 Cari</button>
         </div>
-        <table id="table-rekap">
-            <thead>
-                <tr>
-                    <th>Nama Staff</th>
-                    <th>Total Kehadiran</th>
-                    <th>Total Terima NBM (Rupiah)</th>
-                    <th>Tanggal Hadir Terperinci</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+        <div class="table-wrap">
+            <table id="table-rekap">
+                <thead>
+                    <tr>
+                        <th>Nama Staff</th>
+                        <th>Outlet</th>
+                        <th>Total Hadir</th>
+                        <th>Total NBM</th>
+                        <th>Tanggal Hadir</th>
+                    </tr>
+                </thead>
+                <tbody><tr class="empty-row"><td colspan="5">Pilih filter dan klik Cari</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════ TAB: OUTLET ═══════════════ -->
+<div class="tab-content" id="tab-outlet">
+    <div class="section-card">
+        <div class="section-title">➕ Tambah Outlet Baru</div>
+        <div class="form-grid">
+            <div class="form-group" style="grid-column: span 2;">
+                <div class="form-label">Nama Outlet</div>
+                <input type="text" id="outlet-name" placeholder="Contoh: AB Cafe Pusat">
+            </div>
+            <div class="form-group">
+                <div class="form-label">Latitude</div>
+                <input type="number" step="any" id="outlet-lat" placeholder="-6.200000">
+            </div>
+            <div class="form-group">
+                <div class="form-label">Longitude</div>
+                <input type="number" step="any" id="outlet-lon" placeholder="106.816666">
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="saveOutlet()">💾 Simpan Outlet</button>
     </div>
 
-    <script>
+    <div class="section-card">
+        <div class="section-title">🏪 Daftar Outlet</div>
+        <div class="table-wrap">
+            <table id="table-outlet">
+                <thead><tr><th>#</th><th>Nama Outlet</th><th>Latitude</th><th>Longitude</th><th>Aksi</th></tr></thead>
+                <tbody><tr class="empty-row"><td colspan="5">Memuat data...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════ TAB: STAFF ═══════════════ -->
+<div class="tab-content" id="tab-staff">
+    <div class="section-card">
+        <div class="section-title">➕ Tambah Staff Baru</div>
+        <div class="form-grid">
+            <div class="form-group" style="grid-column: span 2;">
+                <div class="form-label">Nama Staff</div>
+                <input type="text" id="staff-name" placeholder="Nama lengkap staff">
+            </div>
+            <div class="form-group">
+                <div class="form-label">Outlet Kerja</div>
+                <select id="staff-outlet"><option value="">— Pilih Outlet —</option></select>
+            </div>
+            <div class="form-group">
+                <div class="form-label">NBM Rate (Rp)</div>
+                <input type="number" id="staff-nbm" placeholder="50000">
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="saveStaff()">💾 Simpan Staff</button>
+    </div>
+
+    <div class="section-card">
+        <div class="section-title">👤 Daftar Staff</div>
+        <div class="table-wrap">
+            <table id="table-staff">
+                <thead><tr><th>#</th><th>Nama Staff</th><th>Outlet</th><th>NBM Rate</th><th>Aksi</th></tr></thead>
+                <tbody><tr class="empty-row"><td colspan="5">Memuat data...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════ TAB: OTP ═══════════════ -->
+<div class="tab-content" id="tab-otp">
+    <div class="section-card">
+        <div class="section-title">🔑 Generate OTP Tugas Keluar</div>
+        <div class="form-group" style="margin-bottom: 12px;">
+            <div class="form-label">Pilih Staff</div>
+            <select id="otp-staff-select"><option value="">— Pilih Staff —</option></select>
+        </div>
+        <button class="btn btn-primary" onclick="generateOTP()">⚡ Buat Kode OTP</button>
+        <div class="otp-display" id="display-otp">— — — — — —</div>
+        <p style="text-align:center; font-size:12px; color:var(--text-lite);">Kode OTP hanya berlaku untuk hari ini dan sekali pakai</p>
+    </div>
+
+    <div class="section-card">
+        <div class="section-title">📋 Riwayat OTP</div>
+        <div class="table-wrap">
+            <table id="table-otp">
+                <thead><tr><th>Staff</th><th>Kode OTP</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead>
+                <tbody><tr class="empty-row"><td colspan="5">Memuat data...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
     const SUPABASE_URL = "https://gbwbvwfbqqdvjvxgqowp.supabase.co";
-    // PERBAIKAN: Ganti dengan anon/public key dari Supabase dashboard
-    // Pergi ke: Supabase Dashboard > Project Settings > API > Project API Keys > anon public
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdid2J2d2ZicXFkdmp2eGdxb3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTE3NDQsImV4cCI6MjA4OTQ4Nzc0NH0.L_pjKKXGvKuTAgT9AzmWDLSal8txQwkSUx0T7j6j6dc";
+    const _supabase    = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // PERBAIKAN: Pakai window.supabase agar tidak bentrok dengan nama variabel lokal
-    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    window.onload = () => {
-        initAdminData();
-    };
-
-    async function initAdminData() {
-        await loadOutlets();
-        await loadStaffData();
+    // ======================== TABS ========================
+    function switchTab(name) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.add('active');
+        event.currentTarget.classList.add('active');
     }
 
-    // ===================== OUTLET =====================
+    // ======================== SPINNER ========================
+    function showSpinner(text) { document.getElementById('spinner-text').innerText = text || 'Memproses...'; document.getElementById('spinner').classList.add('show'); }
+    function hideSpinner() { document.getElementById('spinner').classList.remove('show'); }
+
+    // ======================== MODAL ========================
+    let _modalConfirmCb = null;
+    function showModal(icon, title, msg, confirmCb) {
+        document.getElementById('modal-icon').innerText  = icon;
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-msg').innerText   = msg;
+        const cancelBtn = document.getElementById('modal-cancel-btn');
+        if (confirmCb) {
+            _modalConfirmCb = confirmCb;
+            document.getElementById('modal-ok-btn').innerText = 'Ya, Hapus';
+            document.getElementById('modal-ok-btn').onclick = () => { closeModal(); confirmCb(); };
+            cancelBtn.style.display = '';
+        } else {
+            _modalConfirmCb = null;
+            document.getElementById('modal-ok-btn').innerText = 'OK';
+            document.getElementById('modal-ok-btn').onclick = closeModal;
+            cancelBtn.style.display = 'none';
+        }
+        document.getElementById('modal').classList.add('show');
+    }
+    function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+    // ======================== EDIT MODAL ========================
+    let _editSaveCb = null;
+    function showEditModal(title, bodyHtml, saveCb) {
+        document.getElementById('edit-modal-title').innerText = title;
+        document.getElementById('edit-modal-body').innerHTML  = bodyHtml;
+        _editSaveCb = saveCb;
+        document.getElementById('edit-modal').classList.add('show');
+    }
+    function closeEditModal() { document.getElementById('edit-modal').classList.remove('show'); }
+    function saveEdit() { if (_editSaveCb) _editSaveCb(); }
+
+    // ======================== INIT ========================
+    window.onload = () => {
+        loadOutlets();
+        loadStaffData();
+        loadOtpLogs();
+    };
+
+    // ======================== OUTLETS ========================
+    let outletCache = [];
+
     async function loadOutlets() {
-        const { data, error } = await _supabase.from('outlets').select('*');
-        if (error) {
-            console.error("Gagal memuat outlet:", error.message);
-            alert("Error load outlet: " + error.message);
-            return;
+        const { data, error } = await _supabase.from('outlets').select('*').order('name');
+        if (error) { showModal('❌', 'Error', error.message); return; }
+        outletCache = data;
+
+        // Tabel outlet
+        const tbody = document.querySelector('#table-outlet tbody');
+        if (!data.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada data outlet</td></tr>';
+        } else {
+            tbody.innerHTML = data.map((o, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><b>${o.name}</b></td>
+                    <td>${o.latitude}</td>
+                    <td>${o.longitude}</td>
+                    <td class="td-actions">
+                        <button class="btn btn-edit" onclick="editOutlet('${o.id}')">✏️ Edit</button>
+                        <button class="btn btn-danger" onclick="deleteOutlet('${o.id}', '${o.name}')">🗑️ Hapus</button>
+                    </td>
+                </tr>`).join('');
         }
 
-        const tbody = document.querySelector('#table-outlet tbody');
-        const selectStaff = document.getElementById('staff-outlet');
-        const filterOutlet = document.getElementById('filter-outlet');
-
-        tbody.innerHTML = data.map(o => `
-            <tr>
-                <td>${o.name}</td>
-                <td>${o.latitude}, ${o.longitude}</td>
-                <td><button onclick="deleteOutlet('${o.id}')">Hapus</button></td>
-            </tr>
-        `).join('');
-
-        const options = data.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
-        selectStaff.innerHTML = '<option value="">-- Pilih Outlet Kerja --</option>' + options;
-        filterOutlet.innerHTML = '<option value="">Semua Outlet</option>' + options;
+        // Populate selects
+        const opts = data.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+        document.getElementById('staff-outlet').innerHTML   = '<option value="">— Pilih Outlet —</option>' + opts;
+        document.getElementById('filter-outlet').innerHTML  = '<option value="">Semua Outlet</option>' + opts;
     }
 
     async function saveOutlet() {
         const name = document.getElementById('outlet-name').value.trim();
         const lat  = document.getElementById('outlet-lat').value.trim();
         const lon  = document.getElementById('outlet-lon').value.trim();
+        if (!name || !lat || !lon) return showModal('⚠️', 'Data Tidak Lengkap', 'Semua field harus diisi.');
 
-        // PERBAIKAN: Validasi manual karena tidak pakai <form required>
-        if (!name || !lat || !lon) {
-            alert("Semua field outlet harus diisi!");
-            return;
-        }
+        showSpinner('Menyimpan outlet...');
+        const { error } = await _supabase.from('outlets').insert({ name, latitude: parseFloat(lat), longitude: parseFloat(lon) });
+        hideSpinner();
 
-        console.log("Menyimpan outlet:", { name, latitude: parseFloat(lat), longitude: parseFloat(lon) });
-
-        const { data, error } = await _supabase.from('outlets').insert({
-            name: name,
-            latitude: parseFloat(lat),   // PERBAIKAN: pastikan number, bukan string
-            longitude: parseFloat(lon)   // PERBAIKAN: pastikan number, bukan string
-        }).select();
-
-        if (error) {
-            alert("Gagal menyimpan Outlet: " + error.message);
-            console.error("Detail Error Outlet:", error);
-        } else {
-            console.log("Outlet tersimpan:", data);
-            alert("Outlet berhasil disimpan!");
-            document.getElementById('outlet-name').value = '';
-            document.getElementById('outlet-lat').value = '';
-            document.getElementById('outlet-lon').value = '';
-            await loadOutlets();
-        }
+        if (error) return showModal('❌', 'Gagal Simpan', error.message);
+        showModal('✅', 'Berhasil', `Outlet "${name}" berhasil ditambahkan!`);
+        document.getElementById('outlet-name').value = '';
+        document.getElementById('outlet-lat').value  = '';
+        document.getElementById('outlet-lon').value  = '';
+        loadOutlets();
     }
 
-    async function deleteOutlet(id) {
-        if (!confirm("Hapus outlet ini?")) return;
-        const { error } = await _supabase.from('outlets').delete().eq('id', id);
-        if (error) {
-            alert("Gagal hapus outlet: " + error.message);
-        } else {
-            await loadOutlets();
-        }
+    function editOutlet(id) {
+        const o = outletCache.find(x => x.id == id);
+        if (!o) return;
+        showEditModal('✏️ Edit Outlet',
+            `<div class="form-group" style="margin-bottom:10px;">
+                <div class="form-label">Nama Outlet</div>
+                <input type="text" id="edit-outlet-name" value="${o.name}">
+             </div>
+             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group">
+                    <div class="form-label">Latitude</div>
+                    <input type="number" step="any" id="edit-outlet-lat" value="${o.latitude}">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">Longitude</div>
+                    <input type="number" step="any" id="edit-outlet-lon" value="${o.longitude}">
+                </div>
+             </div>`,
+            async () => {
+                const name = document.getElementById('edit-outlet-name').value.trim();
+                const lat  = document.getElementById('edit-outlet-lat').value.trim();
+                const lon  = document.getElementById('edit-outlet-lon').value.trim();
+                if (!name || !lat || !lon) return showModal('⚠️', 'Data Tidak Lengkap', 'Semua field harus diisi.');
+                showSpinner('Menyimpan perubahan...');
+                const { error } = await _supabase.from('outlets').update({ name, latitude: parseFloat(lat), longitude: parseFloat(lon) }).eq('id', id);
+                hideSpinner(); closeEditModal();
+                if (error) return showModal('❌', 'Gagal', error.message);
+                showModal('✅', 'Berhasil', 'Data outlet berhasil diperbarui!');
+                loadOutlets();
+            }
+        );
     }
 
-    // ===================== STAFF =====================
+    function deleteOutlet(id, name) {
+        showModal('🗑️', 'Konfirmasi Hapus', `Yakin ingin menghapus outlet "${name}"?\nData yang terhubung bisa terpengaruh.`,
+            async () => {
+                showSpinner('Menghapus...');
+                const { error } = await _supabase.from('outlets').delete().eq('id', id);
+                hideSpinner();
+                if (error) return showModal('❌', 'Gagal Hapus', error.message);
+                showModal('✅', 'Berhasil', `Outlet "${name}" berhasil dihapus.`);
+                loadOutlets();
+            }
+        );
+    }
+
+    // ======================== STAFF ========================
+    let staffCache = [];
+
     async function loadStaffData() {
-        // PERBAIKAN: Query dengan join outlet
-        const { data, error } = await _supabase.from('staff').select('*, outlets(name)');
-        if (error) {
-            console.error("Gagal memuat staff:", error.message);
-            alert("Error load staff: " + error.message);
-            return;
-        }
+        const { data, error } = await _supabase.from('staff').select('*, outlets(name)').order('name');
+        if (error) { showModal('❌', 'Error', error.message); return; }
+        staffCache = data;
 
         const tbody = document.querySelector('#table-staff tbody');
-        const otpStaff = document.getElementById('otp-staff-select');
-        const filterStaff = document.getElementById('filter-staff');
+        if (!data.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada data staff</td></tr>';
+        } else {
+            tbody.innerHTML = data.map((s, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><b>${s.name}</b></td>
+                    <td>${s.outlets?.name || '—'}</td>
+                    <td>Rp ${Number(s.nbm_rate).toLocaleString('id-ID')}</td>
+                    <td class="td-actions">
+                        <button class="btn btn-edit" onclick="editStaff('${s.id}')">✏️ Edit</button>
+                        <button class="btn btn-danger" onclick="deleteStaff('${s.id}', '${s.name}')">🗑️ Hapus</button>
+                    </td>
+                </tr>`).join('');
+        }
 
-        tbody.innerHTML = data.map(s => `
-            <tr>
-                <td>${s.name}</td>
-                <td>${s.outlets?.name || '-'}</td>
-                <td>Rp ${Number(s.nbm_rate).toLocaleString('id-ID')}</td>
-            </tr>
-        `).join('');
-
-        const options = data.map(s => `<option value="${s.id}" data-outlet="${s.outlet_id}">${s.name}</option>`).join('');
-        otpStaff.innerHTML  = '<option value="">-- Pilih Staff --</option>' + options;
-        filterStaff.innerHTML = '<option value="">Semua Staff</option>' + options;
+        // Populate selects
+        const opts = data.map(s => `<option value="${s.id}" data-outlet="${s.outlet_id}">${s.name}</option>`).join('');
+        document.getElementById('otp-staff-select').innerHTML = '<option value="">— Pilih Staff —</option>' + opts;
+        document.getElementById('filter-staff').innerHTML     = '<option value="">Semua Staff</option>' + opts;
     }
 
     async function saveStaff() {
         const name     = document.getElementById('staff-name').value.trim();
         const outletId = document.getElementById('staff-outlet').value;
         const nbmRate  = document.getElementById('staff-nbm').value.trim();
+        if (!name || !outletId || !nbmRate) return showModal('⚠️', 'Data Tidak Lengkap', 'Semua field harus diisi.');
 
-        // PERBAIKAN: Validasi manual
-        if (!name || !outletId || !nbmRate) {
-            alert("Semua field staff harus diisi!");
-            return;
-        }
+        showSpinner('Menyimpan staff...');
+        const { error } = await _supabase.from('staff').insert({ name, outlet_id: outletId, nbm_rate: parseInt(nbmRate) });
+        hideSpinner();
 
-        console.log("Menyimpan staff:", { name, outlet_id: outletId, nbm_rate: parseInt(nbmRate) });
-
-        const { data, error } = await _supabase.from('staff').insert({
-            name: name,
-            outlet_id: outletId,
-            nbm_rate: parseInt(nbmRate)   // PERBAIKAN: pastikan integer
-        }).select();
-
-        if (error) {
-            alert("Gagal menyimpan Staff: " + error.message);
-            console.error("Detail Error Staff:", error);
-        } else {
-            console.log("Staff tersimpan:", data);
-            alert("Staff berhasil disimpan!");
-            document.getElementById('staff-name').value = '';
-            document.getElementById('staff-outlet').value = '';
-            document.getElementById('staff-nbm').value = '';
-            await loadStaffData();
-        }
+        if (error) return showModal('❌', 'Gagal Simpan', error.message);
+        showModal('✅', 'Berhasil', `Staff "${name}" berhasil ditambahkan!`);
+        document.getElementById('staff-name').value = '';
+        document.getElementById('staff-outlet').value = '';
+        document.getElementById('staff-nbm').value = '';
+        loadStaffData();
     }
 
-    // ===================== OTP =====================
+    function editStaff(id) {
+        const s = staffCache.find(x => x.id == id);
+        if (!s) return;
+        const outletOpts = outletCache.map(o => `<option value="${o.id}" ${o.id == s.outlet_id ? 'selected' : ''}>${o.name}</option>`).join('');
+        showEditModal('✏️ Edit Staff',
+            `<div class="form-group" style="margin-bottom:10px;">
+                <div class="form-label">Nama Staff</div>
+                <input type="text" id="edit-staff-name" value="${s.name}">
+             </div>
+             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group">
+                    <div class="form-label">Outlet</div>
+                    <select id="edit-staff-outlet"><option value="">—</option>${outletOpts}</select>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">NBM Rate (Rp)</div>
+                    <input type="number" id="edit-staff-nbm" value="${s.nbm_rate}">
+                </div>
+             </div>`,
+            async () => {
+                const name     = document.getElementById('edit-staff-name').value.trim();
+                const outletId = document.getElementById('edit-staff-outlet').value;
+                const nbmRate  = document.getElementById('edit-staff-nbm').value.trim();
+                if (!name || !outletId || !nbmRate) return showModal('⚠️', 'Data Tidak Lengkap', 'Semua field harus diisi.');
+                showSpinner('Menyimpan perubahan...');
+                const { error } = await _supabase.from('staff').update({ name, outlet_id: outletId, nbm_rate: parseInt(nbmRate) }).eq('id', id);
+                hideSpinner(); closeEditModal();
+                if (error) return showModal('❌', 'Gagal', error.message);
+                showModal('✅', 'Berhasil', 'Data staff berhasil diperbarui!');
+                loadStaffData();
+            }
+        );
+    }
+
+    function deleteStaff(id, name) {
+        showModal('🗑️', 'Konfirmasi Hapus', `Yakin ingin menghapus staff "${name}"?`,
+            async () => {
+                showSpinner('Menghapus...');
+                const { error } = await _supabase.from('staff').delete().eq('id', id);
+                hideSpinner();
+                if (error) return showModal('❌', 'Gagal Hapus', error.message);
+                showModal('✅', 'Berhasil', `Staff "${name}" berhasil dihapus.`);
+                loadStaffData();
+            }
+        );
+    }
+
+    // ======================== OTP ========================
     async function generateOTP() {
-        const select   = document.getElementById('otp-staff-select');
-        const staffId  = select.value;
-        const outletId = select.options[select.selectedIndex].getAttribute('data-outlet');
+        const sel      = document.getElementById('otp-staff-select');
+        const staffId  = sel.value;
+        const outletId = sel.options[sel.selectedIndex].getAttribute('data-outlet');
+        if (!staffId) return showModal('⚠️', 'Pilih Staff', 'Silakan pilih staff terlebih dahulu.');
 
-        if (!staffId) {
-            alert("Pilih staff terlebih dahulu!");
-            return;
-        }
-
-        const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const code  = Math.floor(100000 + Math.random() * 900000).toString();
         const today = new Date().toISOString().split('T')[0];
 
-        console.log("Generate OTP:", { staffId, outletId, generatedCode, today });
-
+        showSpinner('Membuat kode OTP...');
         const { error } = await _supabase.from('otp_logs').insert({
             staff_id:   staffId,
             outlet_id:  outletId,
-            otp_code:   generatedCode,
+            otp_code:   code,
             valid_date: today,
-            is_used:    false   // PERBAIKAN: eksplisit set is_used = false
+            is_used:    false
         });
+        hideSpinner();
 
-        if (error) {
-            alert("Gagal generate OTP: " + error.message);
-            console.error("Detail Error OTP:", error);
-        } else {
-            document.getElementById('display-otp').innerText = generatedCode;
-        }
+        if (error) return showModal('❌', 'Gagal Generate OTP', error.message);
+        document.getElementById('display-otp').innerText = code.split('').join(' ');
+        showModal('🔑', 'OTP Berhasil Dibuat', `Kode OTP: ${code}\n\nBerikan kode ini ke staff yang bertugas keluar hari ini.`);
+        loadOtpLogs();
     }
 
-    // ===================== REKAP =====================
+    async function loadOtpLogs() {
+        const { data, error } = await _supabase
+            .from('otp_logs')
+            .select('*, staff(name)')
+            .order('created_at', { ascending: false })
+            .limit(30);
+        if (error) return;
+
+        const tbody = document.querySelector('#table-otp tbody');
+        if (!data.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada riwayat OTP</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.map(o => `
+            <tr>
+                <td>${o.staff?.name || '—'}</td>
+                <td><b style="letter-spacing:2px;">${o.otp_code}</b></td>
+                <td>${o.valid_date}</td>
+                <td><span style="color:${o.is_used ? 'var(--text-lite)' : 'var(--maroon)'}; font-weight:500;">${o.is_used ? '✅ Sudah dipakai' : '🟢 Aktif'}</span></td>
+                <td class="td-actions">
+                    <button class="btn btn-danger" onclick="deleteOtp('${o.id}')">🗑️ Hapus</button>
+                </td>
+            </tr>`).join('');
+    }
+
+    function deleteOtp(id) {
+        showModal('🗑️', 'Hapus Log OTP', 'Yakin ingin menghapus log OTP ini?',
+            async () => {
+                showSpinner('Menghapus...');
+                const { error } = await _supabase.from('otp_logs').delete().eq('id', id);
+                hideSpinner();
+                if (error) return showModal('❌', 'Gagal', error.message);
+                loadOtpLogs();
+            }
+        );
+    }
+
+    // ======================== REKAP ========================
     async function loadRekapReport() {
         const start    = document.getElementById('filter-start').value;
         const end      = document.getElementById('filter-end').value;
         const staffId  = document.getElementById('filter-staff').value;
         const outletId = document.getElementById('filter-outlet').value;
 
-        // PERBAIKAN: Query dengan join yang benar
+        showSpinner('Mengambil data rekap...');
         let query = _supabase
             .from('attendance')
             .select('created_at, status, staff_id, staff(id, name, nbm_rate, outlet_id, outlets(name))')
             .eq('status', 'hadir');
 
-        if (start) query = query.gte('created_at', start + "T00:00:00");
-        if (end)   query = query.lte('created_at', end   + "T23:59:59");
-        // PERBAIKAN: Filter staff & outlet langsung di query jika ada
-        if (staffId)  query = query.eq('staff_id', staffId);
+        if (start)   query = query.gte('created_at', start + 'T00:00:00');
+        if (end)     query = query.lte('created_at', end   + 'T23:59:59');
+        if (staffId) query = query.eq('staff_id', staffId);
 
         const { data, error } = await query;
-
-        if (error) {
-            alert("Gagal memuat rekap: " + error.message);
-            console.error("Detail Error Rekap:", error);
-            return;
-        }
-
-        console.log("Data rekap:", data);
+        hideSpinner();
+        if (error) return showModal('❌', 'Error', error.message);
 
         let summary = {};
         data.forEach(item => {
-            const sInfo = item.staff;
-            if (!sInfo) return;
-            // Filter outlet di sisi client jika dipilih
-            if (outletId && String(sInfo.outlet_id) !== String(outletId)) return;
-
-            if (!summary[sInfo.id]) {
-                summary[sInfo.id] = {
-                    name:  sInfo.name,
-                    rate:  Number(sInfo.nbm_rate),
-                    count: 0,
-                    dates: []
-                };
+            const s = item.staff;
+            if (!s) return;
+            if (outletId && String(s.outlet_id) !== String(outletId)) return;
+            if (!summary[s.id]) {
+                summary[s.id] = { name: s.name, outlet: s.outlets?.name || '—', rate: Number(s.nbm_rate), count: 0, dates: [] };
             }
-            summary[sInfo.id].count += 1;
-            summary[sInfo.id].dates.push(
-                new Date(item.created_at).toLocaleDateString('id-ID')
-            );
+            summary[s.id].count++;
+            summary[s.id].dates.push(new Date(item.created_at).toLocaleDateString('id-ID'));
         });
 
-        const rows = Object.values(summary);
+        const rows  = Object.values(summary);
         const tbody = document.querySelector('#table-rekap tbody');
 
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Tidak ada data</td></tr>';
+        if (!rows.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data pada rentang waktu ini</td></tr>';
             return;
         }
-
-        tbody.innerHTML = rows.map(row => `
+        tbody.innerHTML = rows.map(r => `
             <tr>
-                <td>${row.name}</td>
-                <td>${row.count} Kali Kehadiran</td>
-                <td><b>Rp ${(row.rate * row.count).toLocaleString('id-ID')}</b></td>
-                <td><small>${row.dates.join(', ')}</small></td>
-            </tr>
-        `).join('');
+                <td><b>${r.name}</b></td>
+                <td>${r.outlet}</td>
+                <td><span class="badge-count">${r.count}x</span></td>
+                <td class="badge-rupiah">Rp ${(r.rate * r.count).toLocaleString('id-ID')}</td>
+                <td><small style="color:var(--text-lite);">${r.dates.join(', ')}</small></td>
+            </tr>`).join('');
     }
-    </script>
+</script>
 </body>
 </html>
